@@ -1,23 +1,41 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model } from 'mongoose';
-import { encodePassword } from '../utils/bcrypt';
-import { RegisterDto } from './dtos/user.dto';
+import { comparePassword, encodePassword } from '../utils/bcrypt';
+import { UserDto } from './dtos';
 import { User, UserDocument } from './schemas/user.schema';
 
 @Injectable()
 export class UserService {
-  constructor(@InjectModel(User.name) private userModel: Model<UserDocument>) {
-    console.log(userModel, 'userModel');
+  constructor(@InjectModel(User.name) private userModel: Model<UserDocument>) {}
+
+  async findOneUser(filter: FilterQuery<User>) {
+    return this.userModel.findOne(filter);
   }
 
-  async register(registerDto: RegisterDto) {
-    const password = await encodePassword(registerDto.password);
-    console.log(password, 'password');
-    const registerUser = new this.userModel({ ...registerDto, password });
-    return registerUser.save();
+  async create(userDto: UserDto) {
+    const password = await encodePassword(userDto.password);
+    const registerUser = new this.userModel({ ...userDto, password });
+    return registerUser;
   }
-  async findOne(filter: FilterQuery<User>) {
-    return this.userModel.findOne(filter);
+  async validateUserByEmail(email: string) {
+    const user = await this.findOneUser({ email });
+    if (user)
+      throw new BadRequestException(
+        'Email already exists, please use another email',
+      );
+  }
+
+  async validateUser(email: string, password: string): Promise<User | null> {
+    const userDB = await this.findOneUser({ email });
+    if (userDB) {
+      const matched = await comparePassword(password, userDB.password);
+      if (matched) {
+        return userDB;
+      } else {
+        return null;
+      }
+    }
+    return null;
   }
 }
